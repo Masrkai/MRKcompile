@@ -10,25 +10,25 @@ The diagram below illustrates how `run_typst_final.sh` orchestrates preprocessor
 graph TD
     subgraph Input Documents & Config
         MD[Markdown Source .md]
-        Meta[compile/meta.yaml<br/>Metadata & Config]
-        Pre[compile/preamble.typ<br/>Styling & Preamble]
+        Meta["compile/meta.yaml<br/>Metadata & Config"]
+        Pre["compile/preamble.typ<br/>Styling & Preamble"]
     end
 
     subgraph "Preprocessing Pipeline (run_typst_final.sh)"
-        Res[1. Setup resolved/<br/>Isolate sources & relative paths]
-        Mermaid[2. preprocess_mermaid.py<br/>```mermaid → Cached PDF Figures]
-        Images[3. preprocess_images.py<br/>Remote HTTP(S) → Local Cache]
-        Tables[4. preprocess_tables.py<br/>Pipe Tables → Native #table]
+        Res["1. Setup resolved/<br/>Isolate sources & relative paths"]
+        Mermaid["2. preprocess_mermaid.py<br/>mermaid blocks → Cached PDF Figures"]
+        Images["3. preprocess_images.py<br/>Remote HTTP(S) → Local Cache"]
+        Tables["4. preprocess_tables.py<br/>Pipe Tables → Native #table"]
     end
 
     subgraph Compilation Engine
-        Pandoc[5. Pandoc<br/>Markdown → Typst AST]
-        Typst[6. Typst Compiler<br/>Typesetting + Preamble]
+        Pandoc["5. Pandoc<br/>Markdown → Typst AST"]
+        Typst["6. Typst Compiler<br/>Typesetting + Preamble"]
     end
 
     subgraph Output & Caching
-        PDF[PDF Output<br/>PDF/filename.pdf]
-        Cache[(Persistent Cache<br/>.cache/diagrams/, .cache/images/)]
+        PDF["PDF Output<br/>PDF/filename.pdf"]
+        Cache[("Persistent Cache<br/>.cache/diagrams/, .cache/images/")]
     end
 
     MD --> Res
@@ -75,6 +75,7 @@ MRKcompile/
 │   ├── preprocess_mermaid.py ← Renders mermaid code blocks to cached PDFs
 │   ├── preprocess_images.py  ← Caches remote HTTP(S) images locally
 │   ├── preprocess_tables.py  ← Converts markdown pipe tables to Typst tables
+│   ├── table-to-typst.lua    ← Pandoc filter variant of table conversion
 │   ├── preamble.typ          ← Typography, page geometry, and styling
 │   ├── meta.yaml             ← Document metadata & defaults
 │   └── README.md             ← Detailed build guide & environment options
