@@ -33,10 +33,6 @@ def parse_markdown_table(table_lines):
 
     def format_cell(text, is_header=False):
         t = text.strip()
-        # Clean up LaTeX math commands for Typst
-        t = re.sub(r'\\mathbf\{(.*?)\}', r'bold(\1)', t)
-        t = re.sub(r'\\text\{(.*?)\}', r'"\1"', t)
-        t = t.replace(r'\approx', 'approx').replace(r'\pm', 'plus.minus').replace(r'\varphi', 'phi.alt')
         # Convert markdown bold **foo** to *foo*
         t = re.sub(r'\*\*(.*?)\*\*', r'*\1*', t)
         if is_header:

@@ -157,13 +157,6 @@ for file in "${FILES[@]}"; do
         continue
     fi
 
-    # --- Step 1c: preprocess markdown tables into Typst table blocks ---------
-    if ! python3 "$COMPILE_DIR/preprocess_tables.py" "$resolved" "$resolved"; then
-        echo "  -> table preprocessing FAILED for $file, skipping" >&2
-        FAILED=$((FAILED + 1))
-        continue
-    fi
-
     # --- Step 2: pandoc -> typst -> PDF --------------------------------------
     # NOTE: we deliberately do NOT pipe pandoc's stderr through grep, and we
     # deliberately do NOT pass --fail-if-warnings: warnings are printed to
