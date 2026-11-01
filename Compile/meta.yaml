@@ -1,0 +1,26 @@
+# =============================================================================
+#  Pandoc metadata for the ABANC proposal
+#  Consumed via:  pandoc --metadata-file=meta.yaml
+#
+#  NOTE: page geometry, margins, fonts, and line spacing are set in
+#  preamble.typ (via --include-in-header). This file carries document
+#  metadata only. Do NOT add a nested `margin:` map here — the Typst
+#  writer does not consume it.
+# =============================================================================
+
+# title: "Attention-Based Adversarial Neural Cryptography (ABANC)"
+# subtitle: >-
+#   A Transformer, Data-Free Self-Play, and Ternary-Weight Approach to
+#   Learned Symmetric Encryption
+# author:
+#   - "Team of 4"
+# date: "2026"
+# lang: en
+
+# --- Table of contents -------------------------------------------------------
+toc: true
+toc-depth: 3
+
+# NOTE: do NOT set `number-sections: true` here. The document uses manual
+# "Section N —" labels in the headings; enabling Pandoc's auto-numbering
+# would produce "1 Section 0 — ..." style double numbering.
