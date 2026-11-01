@@ -1,3 +1,6 @@
+/toc
+/pagebreak
+
 # Markdown Renderer Test 1: Basics
 
 A quick smoke test. If this file renders correctly, the core features work.

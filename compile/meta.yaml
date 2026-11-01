@@ -18,7 +18,7 @@
 # lang: en
 
 # --- Table of contents -------------------------------------------------------
-toc: true
+# toc: true
 toc-depth: 3
 
 # NOTE: do NOT set `number-sections: true` here. The document uses manual

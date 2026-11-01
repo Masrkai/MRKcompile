@@ -1,3 +1,7 @@
+---
+toc: true
+---
+
 # Markdown Renderer Test 2: Intermediate
 
 Tests more languages, richer math environments, more Mermaid diagram types, and features that often live alongside them (tables, footnotes, task lists).

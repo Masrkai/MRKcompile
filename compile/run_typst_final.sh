@@ -157,6 +157,16 @@ for file in "${FILES[@]}"; do
         continue
     fi
 
+    # --- Step 1c: handle custom directives (/toc, /newpage, /pagebreak) ------
+    python3 -c '
+path = "'"$resolved"'"
+text = open(path, "r", encoding="utf-8").read()
+text = text.replace("/toc", "```{=typst}\n#outline()\n```")
+text = text.replace("/newpage", "```{=typst}\n#pagebreak()\n```")
+text = text.replace("/pagebreak", "```{=typst}\n#pagebreak()\n```")
+open(path, "w", encoding="utf-8").write(text)
+'
+
     # --- Step 2: pandoc -> typst -> PDF --------------------------------------
     # NOTE: we deliberately do NOT pipe pandoc's stderr through grep, and we
     # deliberately do NOT pass --fail-if-warnings: warnings are printed to
@@ -181,8 +191,7 @@ for file in "${FILES[@]}"; do
             -V monofont="DejaVu Sans Mono" \
             -f markdown+tex_math_single_backslash+tex_math_double_backslash+tex_math_dollars+raw_attribute+smart+pipe_tables+implicit_figures+gfm_auto_identifiers \
             -t typst \
-            -o "$out_pdf" \
-            --toc --toc-depth=3
+            -o "$out_pdf"
     ); then
         echo "  -> pandoc FAILED for $file" >&2
         FAILED=$((FAILED + 1))

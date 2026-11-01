@@ -90,6 +90,11 @@ Heading anchors follow the GitHub convention (`## 3. LaTeX Math` →
 `#3-latex-math`), enabled via pandoc's `gfm_auto_identifiers`, so
 `[text](#3-latex-math)` links resolve in the PDF.
 
+### Table of Contents & Page Breaks
+
+- **Table of Contents (TOC):** Opt-in per document by adding `toc: true` to the document's YAML frontmatter, or by placing `/toc` in the body.
+- **Page Breaks:** Insert page breaks explicitly using `/newpage` or `/pagebreak`.
+
 ### Warnings vs errors
 
 Pandoc and typst warnings are printed to stderr but do not abort the build;

@@ -7,14 +7,14 @@ anything.**
 ## What this project is
 
 MRKcompile is a document compilation pipeline: it takes Markdown sources and
-produces typeset PDFs via `pandoc` + `typst`. The `Compile/` directory holds
+produces typeset PDFs via `pandoc` + `typst`. The `compile/` directory holds
 the entire toolchain; `testfiles/` holds sample documents for verification.
 
 ## How to navigate the project
 
 ```
 MRKcompile/
-├── Compile/                  ← the toolchain (see Compile/README.md)
+├── compile/                  ← the toolchain (see compile/README.md)
 │   ├── run_typst_final.sh    ← entry point; run this to build
 │   ├── preprocess_mermaid.py ← mermaid fences → rendered PDF figures
 │   ├── preprocess_images.py  ← remote http(s) images → local cached copies
@@ -24,7 +24,8 @@ MRKcompile/
 │   ├── meta.yaml             ← document metadata (TOC, etc.)
 │   └── README.md             ← build instructions and file map
 ├── testfiles/                ← sample .md documents for end-to-end tests
-├── contributors.md           ← this file
+├── README.md                 ← project overview and architecture diagram
+├── contributors.md           ← maintainer & contributor guide (aliased as contributing.md)
 └── AGENTS.md                 ← instructions for AI agents working here
 ```
 
@@ -35,17 +36,17 @@ with `KEEP_RESOLVED=1` for debugging.
 
 Start points by task:
 
-- **"How do I build a PDF?"** → `Compile/README.md`, Usage section.
-- **"My diagram/table looks wrong"** → `Compile/README.md`, Conventions
+- **"How do I build a PDF?"** → root `README.md` or `compile/README.md`, Usage section.
+- **"My diagram/table looks wrong"** → `compile/README.md`, Conventions
   section, then the relevant preprocessor's docstring.
-- **"Styling is off"** → `preamble.typ` owns all visual settings.
+- **"Styling is off"** → `compile/preamble.typ` owns all visual settings.
 - **"Something broke"** → run the script from `testfiles/` to isolate whether
   the problem is in your document or in the pipeline.
 
 ## How to use the project
 
 1. Write your document as plain Markdown in a working directory.
-2. Run `Compile/run_typst_final.sh` from that directory — with no arguments it
+2. Run `compile/run_typst_final.sh` from that directory — with no arguments it
    builds every top-level `*.md`; pass file names to build only those.
 3. Collect output from `PDF/`. Intermediates are hidden in `.cache/` and
    cleaned up automatically; build with `KEEP_RESOLVED=1` if you need to
@@ -55,7 +56,7 @@ Start points by task:
 To test changes to the pipeline itself, run it against `testfiles/`:
 
 ```bash
-cd testfiles && ../Compile/run_typst_final.sh
+cd testfiles && ../compile/run_typst_final.sh
 ```
 
 ## Principles behind the project
@@ -97,8 +98,7 @@ extending.
 
 ## When contributing
 
-- Update `Compile/README.md` whenever you add a file, flag, or environment
-  variable to the pipeline.
+- Update `compile/README.md` (and root `README.md` if architecture changes) whenever you add a file, flag, or environment variable to the pipeline.
 - Keep this file's project map and principles in sync with reality.
 - Verify your change end-to-end with `testfiles/` before handing it off.
 - Match the existing comment style: files open with a banner explaining what
