@@ -14,7 +14,7 @@ graph TD
         Pre[compile/preamble.typ<br/>Styling & Preamble]
     end
 
-    subgraph Preprocessing Pipeline (run_typst_final.sh)
+    subgraph "Preprocessing Pipeline (run_typst_final.sh)"
         Res[1. Setup resolved/<br/>Isolate sources & relative paths]
         Mermaid[2. preprocess_mermaid.py<br/>```mermaid → Cached PDF Figures]
         Images[3. preprocess_images.py<br/>Remote HTTP(S) → Local Cache]
