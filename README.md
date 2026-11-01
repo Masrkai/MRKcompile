@@ -66,24 +66,7 @@ Run the build script from the directory containing your `.md` files:
 
 Outputs are generated in the `PDF/` directory.
 
-## Project Structure
 
-```
-MRKcompile/
-├── compile/                  ← Pipeline toolchain & templates
-│   ├── run_typst_final.sh    ← Main build orchestrator
-│   ├── preprocess_mermaid.py ← Renders mermaid code blocks to cached PDFs
-│   ├── preprocess_images.py  ← Caches remote HTTP(S) images locally
-│   ├── preprocess_tables.py  ← Converts markdown pipe tables to Typst tables
-│   ├── table-to-typst.lua    ← Pandoc filter variant of table conversion
-│   ├── preamble.typ          ← Typography, page geometry, and styling
-│   ├── meta.yaml             ← Document metadata & defaults
-│   └── README.md             ← Detailed build guide & environment options
-├── testfiles/                ← Sample .md documents and end-to-end test suite
-├── README.md                 ← Project overview & architecture (this file)
-├── contributors.md           ← Maintainer & contributor guidelines
-└── AGENTS.md                 ← Instructions for AI agents
-```
 
 ## Documentation
 
