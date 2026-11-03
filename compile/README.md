@@ -5,7 +5,7 @@ typeset PDFs using **pandoc + Typst**, with automatic rendering of **Mermaid
 diagrams** and conversion of **Markdown tables** into native Typst tables.
 
 ```
-source .md ──► preprocess_mermaid.py ──► preprocess_images.py ──► preprocess_tables.py ──► pandoc ──► typst ──► PDF
+source .md ──► mermaid_processor.py ──► image_processor.py ──► table_processor.py ──► pandoc ──► typst ──► PDF
               (```mermaid → image)      (remote img → local)     (| tables | → #table)     (typst writer)
 ```
 
@@ -27,19 +27,20 @@ Run the build script **from the directory that contains your `.md` files**
 (the script may be invoked by its path from anywhere):
 
 ```bash
-/path/to/Compile/run_typst_final.sh                # build every top-level *.md
-/path/to/Compile/run_typst_final.sh a.md b.md      # build only the named files
+/path/to/Compile/compile.sh                # build every top-level *.md
+/path/to/Compile/compile.sh a.md b.md      # build only the named files
+/path/to/Compile/compile.sh -l list.txt    # stitch and build files listed in list.txt
 ```
 
 For each selected file it will:
 
 1. Copy the source into `resolved/` so relative image paths resolve.
-2. Run `preprocess_mermaid.py`, replacing each ` ```mermaid ` block with an
+2. Run `mermaid_processor.py`, replacing each ` ```mermaid ` block with an
    image reference to a PDF rendered by `mmdc` (cached by content hash in
    `.cache/diagrams/`).
-3. Run `preprocess_images.py`, downloading remote `http(s)` images into
+3. Run `image_processor.py`, downloading remote `http(s)` images into
    `.cache/images/` and rewriting the references (Typst cannot fetch URLs).
-4. Run `preprocess_tables.py` on `*_resolved.md` files, converting pipe tables
+4. Run `table_processor.py` on `*_resolved.md` files, converting pipe tables
    into native Typst `#table(...)` blocks.
 5. Run `pandoc` with the Typst PDF engine, producing `PDF/<name>.pdf`.
 
@@ -57,7 +58,7 @@ build with debugging enabled — this creates `./resolved/` in the working
 directory and keeps it:
 
 ```bash
-KEEP_RESOLVED=1 /path/to/Compile/run_typst_final.sh
+KEEP_RESOLVED=1 /path/to/Compile/compile.sh
 ```
 
 ### Diagram captions
@@ -80,7 +81,7 @@ build instead.
 ### Remote images
 
 Typst cannot fetch URLs, so `![alt](https://...)` references are downloaded by
-`preprocess_images.py` into `.cache/images/` (cached by URL hash) and rewritten
+`image_processor.py` into `.cache/images/` (cached by URL hash) and rewritten
 to relative local paths. A failed download leaves the remote reference in
 place and prints a warning; the build then fails loudly at the typst stage.
 
@@ -92,8 +93,8 @@ Heading anchors follow the GitHub convention (`## 3. LaTeX Math` →
 
 ### Table of Contents & Page Breaks
 
-- **Table of Contents (TOC):** Opt-in per document by adding `toc: true` to the document's YAML frontmatter, or by placing `/toc` in the body.
-- **Page Breaks:** Insert page breaks explicitly using `/newpage` or `/pagebreak`.
+- **Table of Contents (TOC):** Opt-in per document by adding `toc: true` to the document's YAML frontmatter, or by placing `/toc` in the body. When stitching multiple files with `-l`, `/toc` can be used at most once globally (subsequent occurrences are ignored).
+- **Page Breaks:** Insert page breaks explicitly using `/breakpage`, `/newpage`, or `/pagebreak`.
 
 ### Warnings vs errors
 
@@ -105,8 +106,8 @@ the converter does not know), not a broken pipeline.
 
 | Variable | Default | Purpose |
 |----------|---------|---------|
-| `META` | `Compile/meta.yaml` | pandoc metadata file |
-| `PREAMBLE` | `Compile/preamble.typ` | Typst preamble injected via `--include-in-header` |
+| `META` | `compile/metadata.yaml` | pandoc metadata file |
+| `PREAMBLE` | `compile/preamble.typ` | Typst preamble injected via `--include-in-header` |
 | `CACHE_DIR` | `./.cache` | persistent cache root (diagrams, images, temp builds) |
 | `DIAGRAMS_DIR` | `$CACHE_DIR/diagrams` | Mermaid render cache |
 | `IMAGES_DIR` | `$CACHE_DIR/images` | remote image download cache |
@@ -118,27 +119,27 @@ the converter does not know), not a broken pipeline.
 
 | File | Role |
 |------|------|
-| `run_typst_final.sh` | orchestrator: file selection, pre-flight checks, preprocessing, pandoc call |
-| `preprocess_mermaid.py` | ` ```mermaid ` fences → rendered PDF images (with captions) |
-| `preprocess_images.py` | remote `http(s)` images → local cached copies |
-| `preprocess_tables.py` | pipe tables → native Typst `#table(...)` blocks |
-| `table-to-typst.lua` | alternative pandoc Lua filter doing the same table conversion inside pandoc (not wired into the shell script by default) |
+| `compile.sh` | orchestrator: file selection, pre-flight checks, preprocessing, pandoc call |
+| `mermaid_processor.py` | ` ```mermaid ` fences → rendered PDF images (with captions) |
+| `image_processor.py` | remote `http(s)` images → local cached copies |
+| `table_processor.py` | pipe tables → native Typst `#table(...)` blocks |
+| `table_filter.lua` | alternative pandoc Lua filter doing the same table conversion inside pandoc (not wired into the shell script by default) |
 | `preamble.typ` | page geometry, fonts, heading/table/figure/code styling, matrix delimiter workaround |
-| `meta.yaml` | document metadata (TOC depth, etc.) |
+| `metadata.yaml` | document metadata (TOC depth, etc.) |
 
 ## Conventions you must respect when editing sources
 
-- **Do not enable `number-sections`** (neither in `meta.yaml` nor as a pandoc
+- **Do not enable `number-sections`** (neither in `metadata.yaml` nor as a pandoc
   flag). Headings carry manual "Section N —" labels; auto-numbering would
   double them up.
 - **Page geometry, fonts and spacing live in `preamble.typ`**, not in
-  `meta.yaml`. The Typst writer ignores a nested `margin:` metadata map.
+  `metadata.yaml`. The Typst writer ignores a nested `margin:` metadata map.
 - **Math** is parsed with `tex_math_dollars` plus the single/double backslash
   extensions; write LaTeX-style math (`$\mathbf{x}$` etc.). The table
   preprocessor translates a few common commands (`\mathbf`, `\text`,
   `\approx`, `\pm`) inside table cells.
 - **Mermaid caches are content-hashed.** If you change the `mmdc` invocation
-  in `preprocess_mermaid.py`, bump `CACHE_VERSION` so stale renders are
+  in `mermaid_processor.py`, bump `CACHE_VERSION` so stale renders are
   invalidated.
 - **Tables** must be standard pipe tables with a `---` separator row to be
   converted; anything else is left untouched.
@@ -154,5 +155,5 @@ the converter does not know), not a broken pipeline.
 that directory) to verify the pipeline end-to-end:
 
 ```bash
-cd ../testfiles && ../Compile/run_typst_final.sh
+cd ../testfiles && ../compile/compile.sh
 ```

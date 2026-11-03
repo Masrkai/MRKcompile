@@ -5,8 +5,8 @@ organized and the principles it follows.
 
 ## Mandatory reading
 
-1. **Before doing any work in this repository, read `contributors.md`**
-   (or `contributing.md`) and root `README.md`. They contain the project map,
+1. **Before doing any work in this repository, read `CONTRIBUTING.md`**
+   and root `README.md`. They contain the project map,
    pipeline architecture, usage instructions, and design principles.
 2. **Also read `compile/README.md`** before touching anything under
    `compile/` — it documents the build pipeline, its conventions, and the
@@ -15,18 +15,18 @@ organized and the principles it follows.
 ## Coherence duty
 
 - **Watch for updates.** Other maintainers and agents may edit these files
-  between your sessions. Always re-read `contributors.md` and
+  between your sessions. Always re-read `CONTRIBUTING.md` and
   `compile/README.md` at the start of a task — do not rely on a cached
   memory of their contents.
 - **Keep everything coherent.** Whenever your change affects behavior,
   structure, or usage, update the documentation in the same change:
-  - new/renamed/removed files → update the project map in `contributors.md`,
+  - new/renamed/removed files → update the project map in `CONTRIBUTING.md`,
     root `README.md`, and the file table in `compile/README.md`;
   - new flags, environment variables, or pipeline steps → update
     `compile/README.md` and root `README.md`;
   - changes to design decisions or conventions → update the Principles
-    section in `contributors.md`.
-- **Never contradict the principles** in `contributors.md` (sources stay
+    section in `CONTRIBUTING.md`.
+- **Never contradict the principles** in `CONTRIBUTING.md` (sources stay
   pristine, failures are loud, one source of truth per concern, caching is
   versioned, paths are portable, tools stay small and single-purpose). If a
   task seems to require violating one, stop and flag the conflict instead of
@@ -38,7 +38,7 @@ Before finishing any task that changes the pipeline, run it against the
 sample documents:
 
 ```bash
-cd testfiles && ../compile/run_typst_final.sh
+cd testfiles && ../compile/compile.sh
 ```
 
 Report what you changed, which docs you updated, and the verification result.

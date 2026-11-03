@@ -15,17 +15,17 @@ the entire toolchain; `testfiles/` holds sample documents for verification.
 ```
 MRKcompile/
 ├── compile/                  ← the toolchain (see compile/README.md)
-│   ├── run_typst_final.sh    ← entry point; run this to build
-│   ├── preprocess_mermaid.py ← mermaid fences → rendered PDF figures
-│   ├── preprocess_images.py  ← remote http(s) images → local cached copies
-│   ├── preprocess_tables.py  ← pipe tables → native Typst tables
-│   ├── table-to-typst.lua    ← pandoc filter variant of the table conversion
+│   ├── compile.sh            ← entry point; run this to build
+│   ├── mermaid_processor.py  ← mermaid fences → rendered PDF figures
+│   ├── image_processor.py    ← remote http(s) images → local cached copies
+│   ├── table_processor.py    ← pipe tables → native Typst tables
+│   ├── table_filter.lua      ← pandoc filter variant of the table conversion
 │   ├── preamble.typ          ← all page/typography styling
-│   ├── meta.yaml             ← document metadata (TOC, etc.)
+│   ├── metadata.yaml         ← document metadata (TOC, etc.)
 │   └── README.md             ← build instructions and file map
 ├── testfiles/                ← sample .md documents for end-to-end tests
 ├── README.md                 ← project overview and architecture diagram
-├── contributors.md           ← maintainer & contributor guide (aliased as contributing.md)
+├── CONTRIBUTING.md           ← maintainer & contributor guide
 └── AGENTS.md                 ← instructions for AI agents working here
 ```
 
@@ -46,7 +46,7 @@ Start points by task:
 ## How to use the project
 
 1. Write your document as plain Markdown in a working directory.
-2. Run `compile/run_typst_final.sh` from that directory — with no arguments it
+2. Run `compile/compile.sh` from that directory — with no arguments it
    builds every top-level `*.md`; pass file names to build only those.
 3. Collect output from `PDF/`. Intermediates are hidden in `.cache/` and
    cleaned up automatically; build with `KEEP_RESOLVED=1` if you need to
@@ -56,7 +56,7 @@ Start points by task:
 To test changes to the pipeline itself, run it against `testfiles/`:
 
 ```bash
-cd testfiles && ../compile/run_typst_final.sh
+cd testfiles && ../compile/compile.sh
 ```
 
 ## Principles behind the project
@@ -78,14 +78,14 @@ extending.
 
 3. **One source of truth per concern.**
    - Styling → `preamble.typ` only.
-   - Metadata → `meta.yaml` only.
+   - Metadata → `metadata.yaml` only.
    - Section numbering → manual "Section N —" labels in the documents;
      auto-numbering is deliberately off to avoid double numbering.
    If two mechanisms can express the same thing, pick one and document it.
 
 4. **Determinism and caching.** Mermaid renders are cached by content hash.
    If you change how anything is rendered, bump `CACHE_VERSION` in
-   `preprocess_mermaid.py` so stale caches are invalidated.
+   `mermaid_processor.py` so stale caches are invalidated.
 
 5. **Portability.** Image links written into derived Markdown are relative;
    environment variables (`META`, `PREAMBLE`, `MMDC`, …) let machines with

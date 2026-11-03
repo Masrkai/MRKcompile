@@ -10,15 +10,15 @@ The diagram below illustrates how `run_typst_final.sh` orchestrates preprocessor
 graph TD
     subgraph Input Documents & Config
         MD[Markdown Source .md]
-        Meta["compile/meta.yaml<br/>Metadata & Config"]
+        Meta["compile/metadata.yaml<br/>Metadata & Config"]
         Pre["compile/preamble.typ<br/>Styling & Preamble"]
     end
 
-    subgraph "Preprocessing Pipeline (run_typst_final.sh)"
+    subgraph "Preprocessing Pipeline (compile.sh)"
         Res["1. Setup resolved/<br/>Isolate sources & relative paths"]
-        Mermaid["2. preprocess_mermaid.py<br/>mermaid blocks → Cached PDF Figures"]
-        Images["3. preprocess_images.py<br/>Remote HTTP(S) → Local Cache"]
-        Tables["4. preprocess_tables.py<br/>Pipe Tables → Native #table"]
+        Mermaid["2. mermaid_processor.py<br/>mermaid blocks → Cached PDF Figures"]
+        Images["3. image_processor.py<br/>Remote HTTP(S) → Local Cache"]
+        Tables["4. table_processor.py<br/>Pipe Tables → Native #table"]
     end
 
     subgraph Compilation Engine
@@ -58,10 +58,10 @@ Run the build script from the directory containing your `.md` files:
 
 ```bash
 # Build all top-level *.md files in current directory
-/path/to/MRKcompile/compile/run_typst_final.sh
+/path/to/MRKcompile/compile/compile.sh
 
 # Build specific files
-/path/to/MRKcompile/compile/run_typst_final.sh document.md
+/path/to/MRKcompile/compile/compile.sh document.md
 ```
 
 Outputs are generated in the `PDF/` directory.
@@ -71,4 +71,4 @@ Outputs are generated in the `PDF/` directory.
 ## Documentation
 
 - **Build Pipeline & Configuration:** See [`compile/README.md`](compile/README.md) for environment variables (`STRICT_MERMAID`, `KEEP_RESOLVED`, etc.), troubleshooting, and conventions.
-- **Contributing & Principles:** See [`contributors.md`](contributors.md) for design philosophy (pristine sources, loud failures, deterministic caching).
+- **Contributing & Principles:** See [`CONTRIBUTING.md`](CONTRIBUTING.md) for design philosophy (pristine sources, loud failures, deterministic caching).
