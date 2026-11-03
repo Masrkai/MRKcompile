@@ -4,7 +4,7 @@ MRKcompile is a robust, modular document compilation pipeline that turns plain M
 
 ## Pipeline Architecture
 
-The diagram below illustrates how `run_typst_final.sh` orchestrates preprocessors, templates, and typesetting engines to compile documents:
+The diagram below illustrates how `compile/compile.sh` orchestrates preprocessors, templates, and typesetting engines to compile documents:
 
 ```mermaid
 graph TD
@@ -62,6 +62,9 @@ Run the build script from the directory containing your `.md` files:
 
 # Build specific files
 /path/to/MRKcompile/compile/compile.sh document.md
+
+# Stitch and build files listed in a list file
+/path/to/MRKcompile/compile/compile.sh -l list.txt
 ```
 
 Outputs are generated in the `PDF/` directory.
