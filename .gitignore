@@ -1,9 +1,10 @@
 # Build artifacts and caches
-.cache/
-**/.cache/
 resolved/
 **/resolved/
 
 # OS metadata
 .DS_Store
 Thumbs.db
+
+# Python caches
+*.pyc
