@@ -5,9 +5,13 @@ typeset PDFs using **pandoc + Typst**, with automatic rendering of **Mermaid
 diagrams** and conversion of **Markdown tables** into native Typst tables.
 
 ```
-source .md ──► mermaid_processor.py ──► image_processor.py ──► table_processor.py ──► pandoc ──► typst ──► PDF
-              (```mermaid → image)      (remote img → local)     (| tables | → #table)     (typst writer)
+source .md ──► mermaid_processor.py ──► image_processor.py ──► directives_processor.py ──► table_processor.py ──► pandoc ──► typst ──► PDF
+              (```mermaid → image)      (remote img → local)     (/toc, /breakpage → typst)    (| tables | → #table)     (typst writer)
 ```
+
+Stitched builds (`-l`) defer the directive-expansion step: tables are converted
+per file, and `directives_processor.py` runs once on the combined document with
+`--single-toc` so `/toc` appears at most once globally.
 
 ## Prerequisites
 
@@ -30,6 +34,7 @@ Run the build script **from the directory that contains your `.md` files**
 /path/to/Compile/compile.sh                # build every top-level *.md
 /path/to/Compile/compile.sh a.md b.md      # build only the named files
 /path/to/Compile/compile.sh -l list.txt    # stitch and build files listed in list.txt
+/path/to/Compile/compile.sh -h             # show help (also: --help)
 ```
 
 For each selected file it will:
@@ -40,9 +45,11 @@ For each selected file it will:
    `.cache/diagrams/`).
 3. Run `image_processor.py`, downloading remote `http(s)` images into
    `.cache/images/` and rewriting the references (Typst cannot fetch URLs).
-4. Run `table_processor.py` on `*_resolved.md` files, converting pipe tables
-   into native Typst `#table(...)` blocks.
-5. Run `pandoc` with the Typst PDF engine, producing `PDF/<name>.pdf`.
+4. Run `directives_processor.py`, expanding `/toc`, `/breakpage`, `/newpage`
+   and `/pagebreak` into raw Typst blocks (stitched builds defer this).
+5. Run `table_processor.py`, converting pipe tables into native Typst
+   `#table(...)` blocks.
+6. Run `pandoc` with the Typst PDF engine, producing `PDF/<name>.pdf`.
 
 The script exits non-zero if any selected file failed to build.
 
@@ -93,8 +100,9 @@ Heading anchors follow the GitHub convention (`## 3. LaTeX Math` →
 
 ### Table of Contents & Page Breaks
 
-- **Table of Contents (TOC):** Opt-in per document by adding `toc: true` to the document's YAML frontmatter, or by placing `/toc` in the body. When stitching multiple files with `-l`, `/toc` can be used at most once globally (subsequent occurrences are ignored).
+- **Table of Contents (TOC):** Opt-in per document by adding `toc: true` to the document's YAML frontmatter, or by placing `/toc` in the body. When stitching multiple files with `-l`, `/toc` can be used at most once globally (subsequent occurrences are removed by `directives_processor.py --single-toc`).
 - **Page Breaks:** Insert page breaks explicitly using `/breakpage`, `/newpage`, or `/pagebreak`.
+- **Matching:** Directives expand by exact occurrence anywhere in the text — including inside code fences. That is intentional and preserved from the pipeline's history; do not rely on a bare `/toc` inside an example being left alone.
 
 ### Warnings vs errors
 
@@ -122,6 +130,7 @@ the converter does not know), not a broken pipeline.
 | `compile.sh` | orchestrator: file selection, pre-flight checks, preprocessing, pandoc call |
 | `mermaid_processor.py` | ` ```mermaid ` fences → rendered PDF images (with captions) |
 | `image_processor.py` | remote `http(s)` images → local cached copies |
+| `directives_processor.py` | `/toc`, `/breakpage`, `/newpage`, `/pagebreak` → raw Typst blocks (`--single-toc` for stitched builds) |
 | `table_processor.py` | pipe tables → native Typst `#table(...)` blocks |
 | `table_filter.lua` | alternative pandoc Lua filter doing the same table conversion inside pandoc (not wired into the shell script by default) |
 | `preamble.typ` | page geometry, fonts, heading/table/figure/code styling, matrix delimiter workaround |

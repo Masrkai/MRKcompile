@@ -6,14 +6,18 @@
 #    compile.sh                         build every top-level *.md in cwd
 #    compile.sh a.md [b.md ...]         build only the named files
 #    compile.sh -l list.txt             stitch and build files listed in list.txt
+#    compile.sh -h | --help             show this help and exit
 #
-#  Pipeline per file:
-#    1. Copy the source .md into resolved/ (so relative image paths work).
-#    2. Run mermaid_processor.py to replace ```mermaid blocks with image refs.
-#    3. Run image_processor.py to download remote images into the local cache.
-#    4. Handle /toc, /breakpage, /newpage, /pagebreak directives, convert the
-#       pipe tables with table_processor.py (pipe tables -> Typst).
-#    5. Run pandoc (custom Typst template) with the typst PDF engine.
+#  Pipeline per file (see build_and_convert):
+#    1. Run mermaid_processor.py to replace ```mermaid blocks with image refs,
+#       writing the resolved copy into resolved/.
+#    2. Run image_processor.py to download remote images into the local cache.
+#    3. (Batch mode) expand directives (/toc, /breakpage, /newpage, /pagebreak)
+#       via directives_processor.py, then convert pipe tables with
+#       table_processor.py (pipe tables -> Typst).
+#       (Stitched mode) tables are per-file; directives are expanded once on
+#       the combined document so that /toc exists at most once globally.
+#    4. Run pandoc (custom Typst template) with the typst PDF engine.
 #       -> PDF/<name>.pdf
 #
 #  Intermediates: by default everything is built inside a temporary directory
@@ -47,47 +51,83 @@ MMDC="${MMDC:-mmdc}"
 STRICT_MERMAID="${STRICT_MERMAID:-0}"
 KEEP_RESOLVED="${KEEP_RESOLVED:-0}"
 
-# --- Pre-flight checks -------------------------------------------------------
-for tool in pandoc typst python3; do
-    if ! command -v "$tool" >/dev/null 2>&1; then
-        echo "ERROR: required tool not found on PATH: $tool" >&2
-        exit 1
-    fi
-done
-if [ ! -f "$META" ]; then
-    echo "ERROR: metadata file not found: $META" >&2
-    exit 1
-fi
-if [ ! -f "$PREAMBLE" ]; then
-    echo "ERROR: preamble file not found: $PREAMBLE" >&2
-    exit 1
-fi
-if [ ! -f "$TEMPLATE" ]; then
-    echo "ERROR: template file not found: $TEMPLATE" >&2
-    exit 1
-fi
+# --- Small helpers ------------------------------------------------------------
 
-echo "pandoc  : $(pandoc --version | head -n1)"
-echo "typst   : $(typst --version)"
-echo "python3 : $(python3 --version)"
-echo
+# Print an error and exit non-zero.
+fatal() {
+    echo "ERROR: $*" >&2
+    exit 1
+}
 
-# --- File selection & options ------------------------------------------------
+# Print its argument with leading/trailing whitespace (space, tab, CR) removed.
+# Used for list-file entries; unlike `xargs` it never mangles quotes or
+# backslashes.
+trim() {
+    local s="$1"
+    s="${s#"${s%%[![:space:]]*}"}" # strip leading
+    s="${s%"${s##*[![:space:]]}"}" # strip trailing
+    printf '%s\n' "$s"
+}
+
+# Print $1 as an absolute path (relative paths resolve against the cwd).
+abspath() {
+    case "$1" in
+        /*) printf '%s\n' "$1" ;;
+        *)  printf '%s\n' "$PWD/$1" ;;
+    esac
+}
+
+# --- Usage -------------------------------------------------------------------
+usage() {
+    cat <<'EOF'
+compile.sh — build Markdown files into PDFs using pandoc + typst.
+
+Usage:
+  compile.sh                        build every top-level *.md in cwd
+  compile.sh a.md [b.md ...]        build only the named files
+  compile.sh -l list.txt            stitch and build files listed in list.txt
+  compile.sh -h | --help            show this help and exit
+
+Options:
+  -l <list.txt>   stitch and build the files listed in <list.txt> as one PDF
+                  (list entries may be relative to the list file; '#' comments)
+  -h, --help      show this help and exit
+
+Environment overrides:
+  META=<path>           path to metadata yaml  (default: <Compile>/metadata.yaml)
+  PREAMBLE=<path>       path to typst preamble (default: <Compile>/preamble.typ)
+  TEMPLATE=<path>       path to typst template (default: <Compile>/typst_template.typ)
+  CACHE_DIR=<path>      persistent cache root  (default: <cwd>/.cache)
+  DIAGRAMS_DIR=<path>   mermaid render cache   (default: $CACHE_DIR/diagrams)
+  IMAGES_DIR=<path>     remote image cache     (default: $CACHE_DIR/images)
+  MMDC=<path>           path to mmdc           (default: mmdc on PATH)
+  STRICT_MERMAID=1      abort on mmdc failure  (default: 0, existing diagrams reused)
+  KEEP_RESOLVED=1       keep resolved/ for debugging (default: 0)
+
+Output:
+  PDF/<name>.pdf. Intermediates are built in a temporary directory under .cache/
+  that is deleted on exit; set KEEP_RESOLVED=1 to build into ./resolved instead.
+EOF
+}
+
+# --- Argument parsing ---------------------------------------------------------
 LIST_FILE=""
 FILES=()
 
 while [[ $# -gt 0 ]]; do
     case "$1" in
+        -h|--help)
+            usage
+            exit 0
+            ;;
         -l)
-            if [ -z "${2:-}" ]; then
-                echo "ERROR: -l requires an argument (list file)" >&2
-                exit 1
-            fi
+            [ -n "${2:-}" ] || fatal "-l requires an argument (list file)"
             LIST_FILE="$2"
             shift 2
             ;;
         -*)
             echo "ERROR: unknown option: $1" >&2
+            echo "Try --help for usage." >&2
             exit 1
             ;;
         *)
@@ -97,35 +137,51 @@ while [[ $# -gt 0 ]]; do
     esac
 done
 
+# Relative overrides must work from any cwd, and pandoc below runs from inside
+# resolved/ — so absolutize the asset paths up front, before any `cd`.
+META="$(abspath "$META")"
+PREAMBLE="$(abspath "$PREAMBLE")"
+TEMPLATE="$(abspath "$TEMPLATE")"
+CACHE_DIR="$(abspath "$CACHE_DIR")"
+DIAGRAMS_DIR="$(abspath "$DIAGRAMS_DIR")"
+IMAGES_DIR="$(abspath "$IMAGES_DIR")"
+
+# --- Pre-flight checks -------------------------------------------------------
+# (Runs after argument parsing so that --help works without any tool installed.)
+for tool in pandoc typst python3; do
+    command -v "$tool" >/dev/null 2>&1 \
+        || fatal "required tool not found on PATH: $tool"
+done
+[ -f "$META" ]     || fatal "metadata file not found: $META"
+[ -f "$PREAMBLE" ] || fatal "preamble file not found: $PREAMBLE"
+[ -f "$TEMPLATE" ] || fatal "template file not found: $TEMPLATE"
+
+echo "pandoc  : $(pandoc --version | head -n1)"
+echo "typst   : $(typst --version)"
+echo "python3 : $(python3 --version)"
+echo
+
 IS_STITCHED=0
 if [ -n "$LIST_FILE" ]; then
-    if [ ! -f "$LIST_FILE" ]; then
-        echo "ERROR: list file not found: $LIST_FILE" >&2
-        exit 1
-    fi
+    [ -f "$LIST_FILE" ] || fatal "list file not found: $LIST_FILE"
     list_dir="$(dirname "$LIST_FILE")"
     STITCHED_FILES=()
     while IFS= read -r line || [ -n "$line" ]; do
-        line="$(echo "$line" | xargs)"
+        line="$(trim "$line")"
         [ -z "$line" ] && continue
         [[ "$line" == \#* ]] && continue
 
-        resolved_path=""
         if [ -f "$list_dir/$line" ]; then
-            resolved_path="$list_dir/$line"
+            STITCHED_FILES+=("$list_dir/$line")
         elif [ -f "$line" ]; then
-            resolved_path="$line"
+            STITCHED_FILES+=("$line")
         else
-            echo "ERROR: file listed in $LIST_FILE not found: $line" >&2
-            exit 1
+            fatal "file listed in $LIST_FILE not found: $line"
         fi
-        STITCHED_FILES+=("$resolved_path")
     done < "$LIST_FILE"
 
-    if [ "${#STITCHED_FILES[@]}" -eq 0 ]; then
-        echo "No markdown files found in list file: $LIST_FILE" >&2
-        exit 1
-    fi
+    [ "${#STITCHED_FILES[@]}" -gt 0 ] \
+        || fatal "No markdown files found in list file: $LIST_FILE"
     FILES=("${STITCHED_FILES[@]}")
     IS_STITCHED=1
 else
@@ -177,11 +233,94 @@ shopt -u nullglob
 # Initialize non-hidden asset directories inside resolved/ from persistent caches
 mkdir -p "$RESOLVED/images" "$RESOLVED/diagrams"
 if [ -d "$IMAGES_DIR" ]; then
-    cp -r "$IMAGES_DIR"/. "$RESOLVED/images/" 2>/dev/null || true
+    cp -r "$IMAGES_DIR"/. "$RESOLVED/images/"
 fi
 if [ -d "$DIAGRAMS_DIR" ]; then
-    cp -r "$DIAGRAMS_DIR"/. "$RESOLVED/diagrams/" 2>/dev/null || true
+    cp -r "$DIAGRAMS_DIR"/. "$RESOLVED/diagrams/"
 fi
+
+# --- Pandoc invocation (single source of truth) -------------------------------
+# NOTE: we deliberately do NOT pipe pandoc's stderr through grep, and we
+# deliberately do NOT pass --fail-if-warnings: warnings are printed to
+# stderr (loud) but must not abort the build, while real errors still do.
+#
+# IMPORTANT: --number-sections is deliberately NOT passed. The document
+# uses manual "Section N —" labels; auto-numbering would double them up.
+#
+# IMPORTANT: +gfm_auto_identifiers makes heading anchors GitHub-style
+# ("## 3. LaTeX Math" -> #3-latex-math) so that [text](#3-latex-math)
+# links resolve; the typst writer then emits matching heading labels.
+PANDOC_BASE_ARGS=(
+    --pdf-engine=typst
+    --metadata-file="$META"
+    --template="$TEMPLATE"
+    --include-in-header="$PREAMBLE"
+    --wrap=none
+    -V mainfont="New Computer Modern"
+    -V monofont="DejaVu Sans Mono"
+    -f markdown+tex_math_single_backslash+tex_math_double_backslash+tex_math_dollars+raw_attribute+smart+pipe_tables+implicit_figures+task_lists+gfm_auto_identifiers
+    -t typst
+)
+
+# Build one PDF.
+#   $1: markdown path relative to $RESOLVED (pandoc resolves images wrt cwd)
+#   $2: absolute output PDF path
+build_pdf() {
+    local md_rel="$1" out_pdf="$2"
+    mkdir -p "$(dirname "$out_pdf")"
+    ( cd "$RESOLVED" && pandoc "$md_rel" "${PANDOC_BASE_ARGS[@]}" -o "$out_pdf" )
+}
+
+# Preprocess one Markdown file into the resolved tree.
+#   $1: source path (relative to cwd or absolute)
+#   $2: "inline" -> expand directives inside this file (batch mode);
+#       "defer"  -> leave directives for expansion on the combined doc
+#                   (stitched mode)
+#   $3: extra text appended to failure messages (e.g. ", skipping")
+# Returns non-zero if any step fails; the caller decides abort vs. skip.
+process_file() {
+    local file="$1" directives="$2" fail_note="$3"
+    local resolved="$RESOLVED/${file}"
+    mkdir -p "$(dirname "$resolved")"
+
+    # --- Step 1: preprocess mermaid blocks -----------------------------------
+    local mermaid_args=(
+        "$COMPILE_DIR/mermaid_processor.py"
+        "$file" "$resolved"
+        --diagrams-dir "$RESOLVED/diagrams"
+        --mmdc "$MMDC"
+    )
+    if [ "$STRICT_MERMAID" = "1" ]; then
+        mermaid_args+=(--strict)
+    fi
+
+    if ! python3 "${mermaid_args[@]}"; then
+        echo "  -> preprocessing FAILED for $file$fail_note" >&2
+        return 1
+    fi
+
+    # --- Step 2: download remote images into the local cache -----------------
+    if ! python3 "$COMPILE_DIR/image_processor.py" "$resolved" "$resolved" \
+            --cache-dir "$RESOLVED/images"; then
+        echo "  -> image preprocessing FAILED for $file$fail_note" >&2
+        return 1
+    fi
+
+    # --- Step 3: custom directives (batch mode; stitched mode defers them) ---
+    if [ "$directives" = "inline" ]; then
+        if ! python3 "$COMPILE_DIR/directives_processor.py" \
+                "$resolved" "$resolved"; then
+            echo "  -> directive expansion FAILED for $file$fail_note" >&2
+            return 1
+        fi
+    fi
+
+    # --- Step 4: convert pipe tables into native Typst tables ----------------
+    if ! python3 "$COMPILE_DIR/table_processor.py" "$resolved" "$resolved"; then
+        echo "  -> table preprocessing FAILED for $file$fail_note" >&2
+        return 1
+    fi
+}
 
 # --- Convert the selected markdown files -------------------------------------
 FAILED=0
@@ -194,73 +333,24 @@ if [ "$IS_STITCHED" = "1" ]; then
     STITCHED_COMBINED="$RESOLVED/_stitched_combined.md"
     > "$STITCHED_COMBINED"
 
+    # A stitched document must be complete: any preprocessing failure aborts
+    # immediately rather than silently producing a PDF with a piece missing.
     for file in "${FILES[@]}"; do
-        resolved="$RESOLVED/${file}"
-        mkdir -p "$(dirname "$resolved")"
-
-        mermaid_args=(
-            "$COMPILE_DIR/mermaid_processor.py"
-            "$file" "$resolved"
-            --diagrams-dir "$RESOLVED/diagrams"
-            --mmdc "$MMDC"
-        )
-        if [ "$STRICT_MERMAID" = "1" ]; then
-            mermaid_args+=(--strict)
-        fi
-
-        if ! python3 "${mermaid_args[@]}"; then
-            echo "  -> preprocessing FAILED for $file" >&2
-            exit 1
-        fi
-
-        if ! python3 "$COMPILE_DIR/image_processor.py" "$resolved" "$resolved" \
-                --cache-dir "$RESOLVED/images"; then
-            echo "  -> image preprocessing FAILED for $file" >&2
-            exit 1
-        fi
-
-        # --- Step 1d: convert pipe tables to native Typst tables -----------------
-        if ! python3 "$COMPILE_DIR/table_processor.py" "$resolved" "$resolved"; then
-            echo "  -> table preprocessing FAILED for $file" >&2
-            exit 1
-        fi
-
+        process_file "$file" defer "" || exit 1
         echo "" >> "$STITCHED_COMBINED"
         echo "" >> "$STITCHED_COMBINED"
-        cat "$resolved" >> "$STITCHED_COMBINED"
+        cat "$RESOLVED/${file}" >> "$STITCHED_COMBINED"
     done
 
-    # Handle global directives: global /toc deduplication, /breakpage, /pagebreak, /newpage
-    python3 -c '
-path = "'"$STITCHED_COMBINED"'"
-text = open(path, "r", encoding="utf-8").read()
+    # Global directives on the combined document: at most one /toc.
+    if ! python3 "$COMPILE_DIR/directives_processor.py" \
+            "$STITCHED_COMBINED" "$STITCHED_COMBINED" --single-toc; then
+        echo "  -> directive expansion FAILED for stitched document" >&2
+        exit 1
+    fi
 
-parts = text.split("/toc")
-if len(parts) > 1:
-    text = parts[0] + "```{=typst}\n#outline()\n```" + "".join(parts[1:])
-
-text = text.replace("/breakpage", "```{=typst}\n#pagebreak()\n```")
-text = text.replace("/pagebreak", "```{=typst}\n#pagebreak()\n```")
-text = text.replace("/newpage", "```{=typst}\n#pagebreak()\n```")
-open(path, "w", encoding="utf-8").write(text)
-'
-
-    if ! (
-        cd "$RESOLVED" && \
-        out_pdf="$WORK_DIR/PDF/$out_pdf_name" && \
-        mkdir -p "$(dirname "$out_pdf")" && \
-        pandoc "$(basename "$STITCHED_COMBINED")" \
-            --pdf-engine=typst \
-            --metadata-file="$META" \
-            --template="$TEMPLATE" \
-            --include-in-header="$PREAMBLE" \
-            --wrap=none \
-            -V mainfont="New Computer Modern" \
-            -V monofont="DejaVu Sans Mono" \
-            -f markdown+tex_math_single_backslash+tex_math_double_backslash+tex_math_dollars+raw_attribute+smart+pipe_tables+implicit_figures+task_lists+gfm_auto_identifiers \
-            -t typst \
-            -o "$out_pdf"
-    ); then
+    if ! build_pdf "$(basename "$STITCHED_COMBINED")" \
+            "$WORK_DIR/PDF/$out_pdf_name"; then
         echo "  -> pandoc FAILED for stitched document" >&2
         exit 1
     fi
@@ -271,80 +361,14 @@ else
     for file in "${FILES[@]}"; do
         echo "Converting: $file"
 
-        resolved="$RESOLVED/${file}"
-        mkdir -p "$(dirname "$resolved")"
-
-        # --- Step 1: preprocess mermaid blocks -----------------------------------
-        mermaid_args=(
-            "$COMPILE_DIR/mermaid_processor.py"
-            "$file" "$resolved"
-            --diagrams-dir "$RESOLVED/diagrams"
-            --mmdc "$MMDC"
-        )
-        if [ "$STRICT_MERMAID" = "1" ]; then
-            mermaid_args+=(--strict)
-        fi
-
-        if ! python3 "${mermaid_args[@]}"; then
-            echo "  -> preprocessing FAILED for $file, skipping" >&2
+        if ! process_file "$file" inline ", skipping"; then
             FAILED=$((FAILED + 1))
             continue
         fi
 
-        # --- Step 1b: download remote images into the local cache ----------------
-        if ! python3 "$COMPILE_DIR/image_processor.py" "$resolved" "$resolved" \
-                --cache-dir "$RESOLVED/images"; then
-            echo "  -> image preprocessing FAILED for $file, skipping" >&2
-            FAILED=$((FAILED + 1))
-            continue
-        fi
-
-        # --- Step 1c: handle custom directives (/toc, /breakpage, /newpage, /pagebreak) ------
-        python3 -c '
-path = "'"$resolved"'"
-text = open(path, "r", encoding="utf-8").read()
-text = text.replace("/toc", "```{=typst}\n#outline()\n```")
-text = text.replace("/breakpage", "```{=typst}\n#pagebreak()\n```")
-text = text.replace("/newpage", "```{=typst}\n#pagebreak()\n```")
-text = text.replace("/pagebreak", "```{=typst}\n#pagebreak()\n```")
-open(path, "w", encoding="utf-8").write(text)
-'
-
-        # --- Step 1d: convert pipe tables into native Typst tables ---------------
-        if ! python3 "$COMPILE_DIR/table_processor.py" "$resolved" "$resolved"; then
-            echo "  -> table preprocessing FAILED for $file, skipping" >&2
-            FAILED=$((FAILED + 1))
-            continue
-        fi
-
-        # --- Step 2: pandoc -> typst -> PDF --------------------------------------
-        # NOTE: we deliberately do NOT pipe pandoc's stderr through grep, and we
-        # deliberately do NOT pass --fail-if-warnings: warnings are printed to
-        # stderr (loud) but must not abort the build, while real errors still do.
-        #
-        # IMPORTANT: --number-sections is deliberately NOT passed. The document
-        # uses manual "Section N —" labels; auto-numbering would double them up.
-        #
-        # IMPORTANT: +gfm_auto_identifiers makes heading anchors GitHub-style
-        # ("## 3. LaTeX Math" -> #3-latex-math) so that [text](#3-latex-math)
-        # links resolve; the typst writer then emits matching heading labels.
-        if ! (
-            cd "$RESOLVED" && \
-            out_pdf="$WORK_DIR/PDF/${file%.md}.pdf" && \
-            mkdir -p "$(dirname "$out_pdf")" && \
-            pandoc "${file}" \
-                --pdf-engine=typst \
-                --metadata-file="$META" \
-                --template="$TEMPLATE" \
-                --include-in-header="$PREAMBLE" \
-                --wrap=none \
-                -V mainfont="New Computer Modern" \
-                -V monofont="DejaVu Sans Mono" \
-                -f markdown+tex_math_single_backslash+tex_math_double_backslash+tex_math_dollars+raw_attribute+smart+pipe_tables+implicit_figures+task_lists+gfm_auto_identifiers \
-                -t typst \
-                -o "$out_pdf"
-        ); then
-            echo "  -> pandoc FAILED for $file" >&2
+        # --- Step 5: pandoc -> typst -> PDF ----------------------------------
+        if ! build_pdf "${file}" "$WORK_DIR/PDF/${file%.md}.pdf"; then
+            echo "  -> pandoc FAILED for $file, skipping" >&2
             FAILED=$((FAILED + 1))
             continue
         fi

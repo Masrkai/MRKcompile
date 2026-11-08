@@ -18,6 +18,7 @@ MRKcompile/
 │   ├── compile.sh            ← entry point; run this to build
 │   ├── mermaid_processor.py  ← mermaid fences → rendered PDF figures
 │   ├── image_processor.py    ← remote http(s) images → local cached copies
+│   ├── directives_processor.py ← /toc, /breakpage directives → Typst blocks
 │   ├── table_processor.py    ← pipe tables → native Typst tables
 │   ├── table_filter.lua      ← pandoc filter variant of the table conversion
 │   ├── preamble.typ          ← all page/typography styling

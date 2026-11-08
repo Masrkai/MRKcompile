@@ -18,12 +18,13 @@ graph TD
         Res["1. Setup resolved/<br/>Isolate sources & relative paths"]
         Mermaid["2. mermaid_processor.py<br/>mermaid blocks → Cached PDF Figures"]
         Images["3. image_processor.py<br/>Remote HTTP(S) → Local Cache"]
-        Tables["4. table_processor.py<br/>Pipe Tables → Native #table"]
+        Directives["4. directives_processor.py<br/>/toc, /breakpage → Typst blocks"]
+        Tables["5. table_processor.py<br/>Pipe Tables → Native #table"]
     end
 
     subgraph Compilation Engine
-        Pandoc["5. Pandoc<br/>Markdown → Typst AST"]
-        Typst["6. Typst Compiler<br/>Typesetting + Preamble"]
+        Pandoc["6. Pandoc<br/>Markdown → Typst AST"]
+        Typst["7. Typst Compiler<br/>Typesetting + Preamble"]
     end
 
     subgraph Output & Caching
@@ -34,7 +35,8 @@ graph TD
     MD --> Res
     Res --> Mermaid
     Mermaid --> Images
-    Images --> Tables
+    Images --> Directives
+    Directives --> Tables
     Tables --> Pandoc
     Meta --> Pandoc
     Pre --> Typst
@@ -65,6 +67,9 @@ Run the build script from the directory containing your `.md` files:
 
 # Stitch and build files listed in a list file
 /path/to/MRKcompile/compile/compile.sh -l list.txt
+
+# Show help
+/path/to/MRKcompile/compile/compile.sh --help    # also: -h
 ```
 
 Outputs are generated in the `PDF/` directory.
