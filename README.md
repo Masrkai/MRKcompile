@@ -7,7 +7,7 @@ MRKcompile is a robust, modular document compilation pipeline that turns plain M
 The diagram below illustrates how `compile/compile.sh` orchestrates preprocessors, templates, and typesetting engines to compile documents:
 
 ```mermaid
-graph TD
+graph LR
     subgraph Input Documents & Config
         MD[Markdown Source .md]
         Meta["compile/metadata.yaml<br/>Metadata & Config"]
