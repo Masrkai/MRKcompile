@@ -50,6 +50,19 @@
 #show figure: set block(above: 0.8em, below: 1.0em)
 #show figure.caption: set text(size: 9.5pt, style: "italic")
 
+// Cap images (e.g. mermaid diagrams, downloaded figures) at the text width.
+// Rendered diagrams arrive at their natural size, which can be wider than the
+// page. Only images without an explicit width descriptor are scaled; an
+// author-set `{width=...}` attribute is honored as-is.
+#show image: it => {
+  if it.width == auto {
+    set image(width: 100%)
+    it
+  } else {
+    it
+  }
+}
+
 // --- Code blocks and inline code --------------------------------------------
 #show raw.where(block: true): set block(
   fill: luma(246),

@@ -11,16 +11,19 @@
 #    1. Copy the source .md into resolved/ (so relative image paths work).
 #    2. Run mermaid_processor.py to replace ```mermaid blocks with image refs.
 #    3. Run image_processor.py to download remote images into the local cache.
-#    4. Run table_processor.py on *_resolved.md sources (pipe tables -> Typst).
-#    5. Run pandoc with the typst PDF engine -> PDF/<name>.pdf
+#    4. Handle /toc, /breakpage, /newpage, /pagebreak directives, convert the
+#       pipe tables with table_processor.py (pipe tables -> Typst).
+#    5. Run pandoc (custom Typst template) with the typst PDF engine.
+#       -> PDF/<name>.pdf
 #
 #  Intermediates: by default everything is built inside a temporary directory
 #  under .cache/ that is deleted when the script exits. Set KEEP_RESOLVED=1
 #  to build into ./resolved and keep it for debugging.
 #
 #  Environment overrides:
-#    META           path to metadata yaml    (default: <Compile>/meta.yaml)
+#    META           path to metadata yaml    (default: <Compile>/metadata.yaml)
 #    PREAMBLE       path to typst preamble   (default: <Compile>/preamble.typ)
+#    TEMPLATE       path to typst template   (default: <Compile>/typst_template.typ)
 #    CACHE_DIR      persistent cache root    (default: <cwd>/.cache)
 #    DIAGRAMS_DIR   mermaid render cache     (default: $CACHE_DIR/diagrams)
 #    IMAGES_DIR     remote image cache       (default: $CACHE_DIR/images)
@@ -36,6 +39,7 @@ WORK_DIR="$(pwd)"
 
 META="${META:-$COMPILE_DIR/metadata.yaml}"
 PREAMBLE="${PREAMBLE:-$COMPILE_DIR/preamble.typ}"
+TEMPLATE="${TEMPLATE:-$COMPILE_DIR/typst_template.typ}"
 CACHE_DIR="${CACHE_DIR:-$WORK_DIR/.cache}"
 DIAGRAMS_DIR="${DIAGRAMS_DIR:-$CACHE_DIR/diagrams}"
 IMAGES_DIR="${IMAGES_DIR:-$CACHE_DIR/images}"
@@ -56,6 +60,10 @@ if [ ! -f "$META" ]; then
 fi
 if [ ! -f "$PREAMBLE" ]; then
     echo "ERROR: preamble file not found: $PREAMBLE" >&2
+    exit 1
+fi
+if [ ! -f "$TEMPLATE" ]; then
+    echo "ERROR: template file not found: $TEMPLATE" >&2
     exit 1
 fi
 
@@ -211,6 +219,12 @@ if [ "$IS_STITCHED" = "1" ]; then
             exit 1
         fi
 
+        # --- Step 1d: convert pipe tables to native Typst tables -----------------
+        if ! python3 "$COMPILE_DIR/table_processor.py" "$resolved" "$resolved"; then
+            echo "  -> table preprocessing FAILED for $file" >&2
+            exit 1
+        fi
+
         echo "" >> "$STITCHED_COMBINED"
         echo "" >> "$STITCHED_COMBINED"
         cat "$resolved" >> "$STITCHED_COMBINED"
@@ -238,11 +252,12 @@ open(path, "w", encoding="utf-8").write(text)
         pandoc "$(basename "$STITCHED_COMBINED")" \
             --pdf-engine=typst \
             --metadata-file="$META" \
+            --template="$TEMPLATE" \
             --include-in-header="$PREAMBLE" \
             --wrap=none \
             -V mainfont="New Computer Modern" \
             -V monofont="DejaVu Sans Mono" \
-            -f markdown+tex_math_single_backslash+tex_math_double_backslash+tex_math_dollars+raw_attribute+smart+pipe_tables+implicit_figures+gfm_auto_identifiers \
+            -f markdown+tex_math_single_backslash+tex_math_double_backslash+tex_math_dollars+raw_attribute+smart+pipe_tables+implicit_figures+task_lists+gfm_auto_identifiers \
             -t typst \
             -o "$out_pdf"
     ); then
@@ -295,6 +310,13 @@ text = text.replace("/pagebreak", "```{=typst}\n#pagebreak()\n```")
 open(path, "w", encoding="utf-8").write(text)
 '
 
+        # --- Step 1d: convert pipe tables into native Typst tables ---------------
+        if ! python3 "$COMPILE_DIR/table_processor.py" "$resolved" "$resolved"; then
+            echo "  -> table preprocessing FAILED for $file, skipping" >&2
+            FAILED=$((FAILED + 1))
+            continue
+        fi
+
         # --- Step 2: pandoc -> typst -> PDF --------------------------------------
         # NOTE: we deliberately do NOT pipe pandoc's stderr through grep, and we
         # deliberately do NOT pass --fail-if-warnings: warnings are printed to
@@ -313,11 +335,12 @@ open(path, "w", encoding="utf-8").write(text)
             pandoc "${file}" \
                 --pdf-engine=typst \
                 --metadata-file="$META" \
+                --template="$TEMPLATE" \
                 --include-in-header="$PREAMBLE" \
                 --wrap=none \
                 -V mainfont="New Computer Modern" \
                 -V monofont="DejaVu Sans Mono" \
-                -f markdown+tex_math_single_backslash+tex_math_double_backslash+tex_math_dollars+raw_attribute+smart+pipe_tables+implicit_figures+gfm_auto_identifiers \
+                -f markdown+tex_math_single_backslash+tex_math_double_backslash+tex_math_dollars+raw_attribute+smart+pipe_tables+implicit_figures+task_lists+gfm_auto_identifiers \
                 -t typst \
                 -o "$out_pdf"
         ); then
