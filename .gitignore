@@ -1,8 +1,6 @@
 # Build artifacts and caches
 .cache/
 **/.cache/
-PDF/
-**/PDF/
 resolved/
 **/resolved/
 
