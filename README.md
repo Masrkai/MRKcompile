@@ -16,8 +16,8 @@ graph LR
 
     subgraph "Preprocessing Pipeline (compile.sh)"
         Res["1. Setup resolved/<br/>Isolate sources & relative paths"]
-        Mermaid["2. mermaid_processor.py<br/>mermaid blocks → Cached PDF Figures"]
-        Images["3. image_processor.py<br/>Remote HTTP(S) → Local Cache"]
+        Mermaid["2. mermaid_processor.sh<br/>mermaid blocks → Cached PDF Figures"]
+        Images["3. image_processor.sh<br/>Remote HTTP(S) → Local Cache"]
     end
 
     subgraph Compilation Engine
@@ -47,7 +47,7 @@ graph LR
 ### Prerequisites
 - **pandoc** (Markdown to Typst conversion)
 - **typst** (PDF typesetting engine)
-- **python3** (runs the mermaid and remote-image preprocessors)
+- **curl** (downloads remote images, used by `image_processor.sh`)
 - **mmdc** (Mermaid CLI: `npm install -g @mermaid-js/mermaid-cli`, required only for diagrams)
 
 ### Building PDFs

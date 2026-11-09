@@ -5,7 +5,7 @@ typeset PDFs using **pandoc + Typst**, with automatic rendering of **Mermaid
 diagrams** and conversion of **Markdown tables** into native Typst tables.
 
 ```
-source .md ──► mermaid_processor.py ──► image_processor.py ──►  pandoc (Lua filters)  ──► typst ──► PDF
+source .md ──► mermaid_processor.sh ──► image_processor.sh ──►  pandoc (Lua filters)  ──► typst ──► PDF
                 (```mermaid → image)      (remote img → local)     ↑                        (typst writer)
                                                                    inside pandoc:
                                                                    directives_filter.lua (/toc, /breakpage → typst)
@@ -22,7 +22,7 @@ runs on per-file and on combined documents alike.
 |------|---------|---------|
 | `pandoc` | Markdown → Typst conversion | package manager or <https://pandoc.org> |
 | `typst` | PDF engine (invoked by pandoc) | package manager or <https://typst.app> |
-| `python3` | runs the mermaid and remote-image preprocessors | usually preinstalled |
+| `curl` | downloads remote images (used by `image_processor.sh`) | usually preinstalled |
 | `mmdc` | renders Mermaid diagrams | `npm install -g @mermaid-js/mermaid-cli` |
 
 `mmdc` is only needed if your documents contain ` ```mermaid ` blocks. Node.js
@@ -43,10 +43,10 @@ Run the build script **from the directory that contains your `.md` files**
 For each selected file it will:
 
 1. Copy the source into `resolved/` so relative image paths resolve.
-2. Run `mermaid_processor.py`, replacing each ` ```mermaid ` block with an
+2. Run `mermaid_processor.sh`, replacing each ` ```mermaid ` block with an
    image reference to a PDF rendered by `mmdc` (cached by content hash in
    `.cache/diagrams/`).
-3. Run `image_processor.py`, downloading remote `http(s)` images into
+3. Run `image_processor.sh`, downloading remote `http(s)` images into
    `.cache/images/` and rewriting the references (Typst cannot fetch URLs).
 4. Run `pandoc` with the Typst PDF engine, producing `PDF/<name>.pdf`. Two
    pandoc Lua filters run inside that invocation, in order:
@@ -92,7 +92,7 @@ build instead.
 ### Remote images
 
 Typst cannot fetch URLs, so `![alt](https://...)` references are downloaded by
-`image_processor.py` into `.cache/images/` (cached by URL hash) and rewritten
+`image_processor.sh` into `.cache/images/` (cached by URL hash) and rewritten
 to relative local paths. A failed download leaves the remote reference in
 place and prints a warning; the build then fails loudly at the typst stage.
 
@@ -132,8 +132,8 @@ the converter does not know), not a broken pipeline.
 | File | Role |
 |------|------|
 | `compile.sh` | orchestrator: file selection, pre-flight checks, preprocessing, pandoc call |
-| `mermaid_processor.py` | ` ```mermaid ` fences → rendered PDF images (with captions) |
-| `image_processor.py` | remote `http(s)` images → local cached copies |
+| `mermaid_processor.sh` | ` ```mermaid ` fences → rendered PDF images (with captions) |
+| `image_processor.sh` | remote `http(s)` images → local cached copies |
 | `directives_filter.lua` | pandoc Lua filter: `/toc`, `/breakpage`, `/newpage`, `/pagebreak` → raw Typst blocks (`-M single-toc=true` for stitched builds) |
 | `table_filter.lua` | pandoc Lua filter: pipe tables → native Typst `#table(...)` blocks |
 | `preamble.typ` | page geometry, fonts, heading/table/figure/code styling, matrix delimiter workaround |
@@ -150,7 +150,7 @@ the converter does not know), not a broken pipeline.
   extensions; write LaTeX-style math (`$\mathbf{x}$` etc.). Inside table cells,
   pandoc converts LaTeX math to Typst natively.
 - **Mermaid caches are content-hashed.** If you change the `mmdc` invocation
-  in `mermaid_processor.py`, bump `CACHE_VERSION` so stale renders are
+  in `mermaid_processor.sh`, bump `CACHE_VERSION` so stale renders are
   invalidated.
 - **Tables** must be standard pipe tables with a `---` separator row to be
   converted; anything else is left untouched.

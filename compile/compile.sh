@@ -9,9 +9,9 @@
 #    compile.sh -h | --help             show this help and exit
 #
 #  Pipeline per file (see build_and_convert):
-#    1. Run mermaid_processor.py to replace ```mermaid blocks with image refs,
+#    1. Run mermaid_processor.sh to replace ```mermaid blocks with image refs,
 #       writing the resolved copy into resolved/.
-#    2. Run image_processor.py to download remote images into the local cache.
+#    2. Run image_processor.sh to download remote images into the local cache.
 #    3. Run pandoc (custom Typst template) with the typst PDF engine.
 #       Directive expansion (/toc, /breakpage, /newpage, /pagebreak) and pipe
 #       table conversion are pandoc Lua filters (directives_filter.lua,
@@ -33,6 +33,8 @@
 #    MMDC           path to mmdc             (default: mmdc on PATH)
 #    STRICT_MERMAID set to 1 to abort on mmdc failure (default: 0)
 #    KEEP_RESOLVED  set to 1 to keep resolved/ for debugging (default: 0)
+#    ALLOW_HTTP     set to 1 to let image_processor.sh fetch plaintext http://
+#                   images (default: 0, HTTPS-only)
 # =============================================================================
 set -euo pipefail
 
@@ -102,6 +104,8 @@ Environment overrides:
   MMDC=<path>           path to mmdc           (default: mmdc on PATH)
   STRICT_MERMAID=1      abort on mmdc failure  (default: 0, existing diagrams reused)
   KEEP_RESOLVED=1       keep resolved/ for debugging (default: 0)
+  ALLOW_HTTP=1          allow plaintext http:// image downloads (default: 0,
+                        HTTPS-only; see image_processor.sh)
 
 Output:
   PDF/<name>.pdf. Intermediates are built in a temporary directory under .cache/
@@ -147,7 +151,7 @@ IMAGES_DIR="$(abspath "$IMAGES_DIR")"
 
 # --- Pre-flight checks -------------------------------------------------------
 # (Runs after argument parsing so that --help works without any tool installed.)
-for tool in pandoc typst python3; do
+for tool in pandoc typst curl; do
     command -v "$tool" >/dev/null 2>&1 \
         || fatal "required tool not found on PATH: $tool"
 done
@@ -157,7 +161,7 @@ done
 
 echo "pandoc  : $(pandoc --version | head -n1)"
 echo "typst   : $(typst --version)"
-echo "python3 : $(python3 --version)"
+echo "curl    : $(curl --version | head -n1)"
 echo
 
 IS_STITCHED=0
@@ -286,7 +290,7 @@ process_file() {
 
     # --- Step 1: preprocess mermaid blocks -----------------------------------
     local mermaid_args=(
-        "$COMPILE_DIR/mermaid_processor.py"
+        "$COMPILE_DIR/mermaid_processor.sh"
         "$file" "$resolved"
         --diagrams-dir "$RESOLVED/diagrams"
         --mmdc "$MMDC"
@@ -295,13 +299,13 @@ process_file() {
         mermaid_args+=(--strict)
     fi
 
-    if ! python3 "${mermaid_args[@]}"; then
+    if ! "${mermaid_args[@]}"; then
         echo "  -> preprocessing FAILED for $file$fail_note" >&2
         return 1
     fi
 
     # --- Step 2: download remote images into the local cache -----------------
-    if ! python3 "$COMPILE_DIR/image_processor.py" "$resolved" "$resolved" \
+    if ! "$COMPILE_DIR/image_processor.sh" "$resolved" "$resolved" \
             --cache-dir "$RESOLVED/images"; then
         echo "  -> image preprocessing FAILED for $file$fail_note" >&2
         return 1

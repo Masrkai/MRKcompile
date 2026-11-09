@@ -16,8 +16,8 @@ the entire toolchain; `testfiles/` holds sample documents for verification.
 MRKcompile/
 ├── compile/                  ← the toolchain (see compile/README.md)
 │   ├── compile.sh            ← entry point; run this to build
-│   ├── mermaid_processor.py  ← mermaid fences → rendered PDF figures
-│   ├── image_processor.py    ← remote http(s) images → local cached copies
+│   ├── mermaid_processor.sh  ← mermaid fences → rendered PDF figures
+│   ├── image_processor.sh    ← remote http(s) images → local cached copies
 │   ├── directives_filter.lua ← pandoc filter: /toc, /breakpage directives → Typst blocks
 │   ├── table_filter.lua      ← pandoc filter: pipe tables → native Typst tables
 │   ├── preamble.typ          ← all page/typography styling
@@ -86,7 +86,7 @@ extending.
 
 4. **Determinism and caching.** Mermaid renders are cached by content hash.
    If you change how anything is rendered, bump `CACHE_VERSION` in
-   `mermaid_processor.py` so stale caches are invalidated.
+   `mermaid_processor.sh` so stale caches are invalidated.
 
 5. **Portability.** Image links written into derived Markdown are relative;
    environment variables (`META`, `PREAMBLE`, `MMDC`, …) let machines with
