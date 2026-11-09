@@ -18,9 +18,8 @@ MRKcompile/
 │   ├── compile.sh            ← entry point; run this to build
 │   ├── mermaid_processor.py  ← mermaid fences → rendered PDF figures
 │   ├── image_processor.py    ← remote http(s) images → local cached copies
-│   ├── directives_processor.py ← /toc, /breakpage directives → Typst blocks
-│   ├── table_processor.py    ← pipe tables → native Typst tables
-│   ├── table_filter.lua      ← pandoc filter variant of the table conversion
+│   ├── directives_filter.lua ← pandoc filter: /toc, /breakpage directives → Typst blocks
+│   ├── table_filter.lua      ← pandoc filter: pipe tables → native Typst tables
 │   ├── preamble.typ          ← all page/typography styling
 │   ├── metadata.yaml         ← document metadata (TOC, etc.)
 │   └── README.md             ← build instructions and file map
@@ -39,7 +38,8 @@ Start points by task:
 
 - **"How do I build a PDF?"** → root `README.md` or `compile/README.md`, Usage section.
 - **"My diagram/table looks wrong"** → `compile/README.md`, Conventions
-  section, then the relevant preprocessor's docstring.
+  section, then the relevant preprocessor's docstring or filter's header
+  comment.
 - **"Styling is off"** → `compile/preamble.typ` owns all visual settings.
 - **"Something broke"** → run the script from `testfiles/` to isolate whether
   the problem is in your document or in the pipeline.

@@ -12,12 +12,11 @@
 #    1. Run mermaid_processor.py to replace ```mermaid blocks with image refs,
 #       writing the resolved copy into resolved/.
 #    2. Run image_processor.py to download remote images into the local cache.
-#    3. (Batch mode) expand directives (/toc, /breakpage, /newpage, /pagebreak)
-#       via directives_processor.py, then convert pipe tables with
-#       table_processor.py (pipe tables -> Typst).
-#       (Stitched mode) tables are per-file; directives are expanded once on
-#       the combined document so that /toc exists at most once globally.
-#    4. Run pandoc (custom Typst template) with the typst PDF engine.
+#    3. Run pandoc (custom Typst template) with the typst PDF engine.
+#       Directive expansion (/toc, /breakpage, /newpage, /pagebreak) and pipe
+#       table conversion are pandoc Lua filters (directives_filter.lua,
+#       table_filter.lua) running inside pandoc. (Stitched mode additionally
+#       passes -M single-toc=true so that /toc exists at most once globally.)
 #       -> PDF/<name>.pdf
 #
 #  Intermediates: by default everything is built inside a temporary directory
@@ -260,7 +259,12 @@ PANDOC_BASE_ARGS=(
     -V monofont="DejaVu Sans Mono"
     -f markdown+tex_math_single_backslash+tex_math_double_backslash+tex_math_dollars+raw_attribute+smart+pipe_tables+implicit_figures+task_lists+gfm_auto_identifiers
     -t typst
+    --lua-filter="$COMPILE_DIR/directives_filter.lua"
+    --lua-filter="$COMPILE_DIR/table_filter.lua"
 )
+
+# Extra pandoc arguments per build mode (stitched mode adds -M single-toc).
+PANDOC_EXTRA_ARGS=()
 
 # Build one PDF.
 #   $1: markdown path relative to $RESOLVED (pandoc resolves images wrt cwd)
@@ -268,18 +272,15 @@ PANDOC_BASE_ARGS=(
 build_pdf() {
     local md_rel="$1" out_pdf="$2"
     mkdir -p "$(dirname "$out_pdf")"
-    ( cd "$RESOLVED" && pandoc "$md_rel" "${PANDOC_BASE_ARGS[@]}" -o "$out_pdf" )
+    ( cd "$RESOLVED" && pandoc "$md_rel" "${PANDOC_BASE_ARGS[@]}" "${PANDOC_EXTRA_ARGS[@]}" -o "$out_pdf" )
 }
 
 # Preprocess one Markdown file into the resolved tree.
 #   $1: source path (relative to cwd or absolute)
-#   $2: "inline" -> expand directives inside this file (batch mode);
-#       "defer"  -> leave directives for expansion on the combined doc
-#                   (stitched mode)
-#   $3: extra text appended to failure messages (e.g. ", skipping")
+#   $2: extra text appended to failure messages (e.g. ", skipping")
 # Returns non-zero if any step fails; the caller decides abort vs. skip.
 process_file() {
-    local file="$1" directives="$2" fail_note="$3"
+    local file="$1" fail_note="$2"
     local resolved="$RESOLVED/${file}"
     mkdir -p "$(dirname "$resolved")"
 
@@ -305,21 +306,8 @@ process_file() {
         echo "  -> image preprocessing FAILED for $file$fail_note" >&2
         return 1
     fi
-
-    # --- Step 3: custom directives (batch mode; stitched mode defers them) ---
-    if [ "$directives" = "inline" ]; then
-        if ! python3 "$COMPILE_DIR/directives_processor.py" \
-                "$resolved" "$resolved"; then
-            echo "  -> directive expansion FAILED for $file$fail_note" >&2
-            return 1
-        fi
-    fi
-
-    # --- Step 4: convert pipe tables into native Typst tables ----------------
-    if ! python3 "$COMPILE_DIR/table_processor.py" "$resolved" "$resolved"; then
-        echo "  -> table preprocessing FAILED for $file$fail_note" >&2
-        return 1
-    fi
+    # Steps 3+ (directive expansion, pipe-table conversion) happen inside
+    # pandoc via the Lua filters in PANDOC_BASE_ARGS.
 }
 
 # --- Convert the selected markdown files -------------------------------------
@@ -333,21 +321,17 @@ if [ "$IS_STITCHED" = "1" ]; then
     STITCHED_COMBINED="$RESOLVED/_stitched_combined.md"
     > "$STITCHED_COMBINED"
 
-    # A stitched document must be complete: any preprocessing failure aborts
-    # immediately rather than silently producing a PDF with a piece missing.
+    # A stitched document with multiple /toc directives would show several
+    # tables of contents; -M single-toc makes the directive filter keep only
+    # the first. Any preprocessing failure aborts immediately rather than
+    # silently producing a PDF with a piece missing.
+    PANDOC_EXTRA_ARGS=(-M single-toc=true)
     for file in "${FILES[@]}"; do
-        process_file "$file" defer "" || exit 1
+        process_file "$file" "" || exit 1
         echo "" >> "$STITCHED_COMBINED"
         echo "" >> "$STITCHED_COMBINED"
         cat "$RESOLVED/${file}" >> "$STITCHED_COMBINED"
     done
-
-    # Global directives on the combined document: at most one /toc.
-    if ! python3 "$COMPILE_DIR/directives_processor.py" \
-            "$STITCHED_COMBINED" "$STITCHED_COMBINED" --single-toc; then
-        echo "  -> directive expansion FAILED for stitched document" >&2
-        exit 1
-    fi
 
     if ! build_pdf "$(basename "$STITCHED_COMBINED")" \
             "$WORK_DIR/PDF/$out_pdf_name"; then
@@ -361,7 +345,7 @@ else
     for file in "${FILES[@]}"; do
         echo "Converting: $file"
 
-        if ! process_file "$file" inline ", skipping"; then
+        if ! process_file "$file" ", skipping"; then
             FAILED=$((FAILED + 1))
             continue
         fi

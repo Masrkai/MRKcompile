@@ -18,13 +18,11 @@ graph LR
         Res["1. Setup resolved/<br/>Isolate sources & relative paths"]
         Mermaid["2. mermaid_processor.py<br/>mermaid blocks → Cached PDF Figures"]
         Images["3. image_processor.py<br/>Remote HTTP(S) → Local Cache"]
-        Directives["4. directives_processor.py<br/>/toc, /breakpage → Typst blocks"]
-        Tables["5. table_processor.py<br/>Pipe Tables → Native #table"]
     end
 
     subgraph Compilation Engine
-        Pandoc["6. Pandoc<br/>Markdown → Typst AST"]
-        Typst["7. Typst Compiler<br/>Typesetting + Preamble"]
+        Pandoc["4. Pandoc<br/>Markdown → Typst AST<br/>+ Lua filters:<br/>directives_filter.lua (/toc, /breakpage → Typst)<br/>table_filter.lua (Pipe Tables → Native #table)"]
+        Typst["5. Typst Compiler<br/>Typesetting + Preamble"]
     end
 
     subgraph Output & Caching
@@ -35,9 +33,7 @@ graph LR
     MD --> Res
     Res --> Mermaid
     Mermaid --> Images
-    Images --> Directives
-    Directives --> Tables
-    Tables --> Pandoc
+    Images --> Pandoc
     Meta --> Pandoc
     Pre --> Typst
     Pandoc --> Typst
@@ -51,7 +47,7 @@ graph LR
 ### Prerequisites
 - **pandoc** (Markdown to Typst conversion)
 - **typst** (PDF typesetting engine)
-- **python3** (runs preprocessors)
+- **python3** (runs the mermaid and remote-image preprocessors)
 - **mmdc** (Mermaid CLI: `npm install -g @mermaid-js/mermaid-cli`, required only for diagrams)
 
 ### Building PDFs
