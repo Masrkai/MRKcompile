@@ -16,13 +16,14 @@ graph LR
 
     subgraph "Preprocessing Pipeline (compile.sh)"
         Res["1. Setup resolved/<br/>Isolate sources & relative paths"]
-        Mermaid["2. mermaid_processor.sh<br/>mermaid blocks → Cached PDF Figures"]
-        Images["3. image_processor.sh<br/>Remote HTTP(S) → Local Cache"]
+        Paths["2. asset_path_processor.sh<br/>Rewrite relative asset paths"]
+        Mermaid["3. mermaid_processor.sh<br/>mermaid blocks → Cached PDF Figures"]
+        Images["4. image_processor.sh<br/>Remote HTTP(S) → Local Cache"]
     end
 
     subgraph Compilation Engine
-        Pandoc["4. Pandoc<br/>Markdown → Typst AST<br/>+ Lua filters:<br/>directives_filter.lua (/toc, /breakpage → Typst)<br/>table_filter.lua (Pipe Tables → Native #table)"]
-        Typst["5. Typst Compiler<br/>Typesetting + Preamble"]
+        Pandoc["5. Pandoc<br/>Markdown → Typst AST<br/>+ Lua filters:<br/>directives_filter.lua (/toc, /breakpage → Typst)<br/>table_filter.lua (Pipe Tables → Native #table)"]
+        Typst["6. Typst Compiler<br/>Typesetting + Preamble"]
     end
 
     subgraph Output & Caching
@@ -31,7 +32,8 @@ graph LR
     end
 
     MD --> Res
-    Res --> Mermaid
+    Res --> Paths
+    Paths --> Mermaid
     Mermaid --> Images
     Images --> Pandoc
     Meta --> Pandoc
@@ -68,7 +70,11 @@ Run the build script from the directory containing your `.md` files:
 /path/to/MRKcompile/compile/compile.sh --help    # also: -h
 ```
 
-Outputs are generated in the `PDF/` directory.
+Outputs are generated in the `PDF/` directory. With `-l`, the list file's
+directory is the project root: entries resolve against it, so the script
+may be run from any cwd. Relative asset paths in the documents resolve
+against the document's own directory first, then the project root. See
+[`compile/README.md`](compile/README.md) for details.
 
 
 

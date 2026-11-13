@@ -8,9 +8,19 @@
 #    compile.sh -l list.txt             stitch and build files listed in list.txt
 #    compile.sh -h | --help             show this help and exit
 #
-#  Pipeline per file (see build_and_convert):
-#    1. Run mermaid_processor.sh to replace ```mermaid blocks with image refs,
-#       writing the resolved copy into resolved/.
+#  Path handling: for stitched builds (-l) the LIST FILE'S DIRECTORY is the
+#  project root — list entries resolve against it, so the script may be
+#  invoked from any cwd. Relative asset paths in the documents resolve
+#  against the document's own directory first, then the project root (see
+#  asset_path_processor.sh). Stitched sources are staged flat into resolved/
+#  by basename; duplicate basenames are a hard error. Normal builds resolve
+#  against the cwd.
+#
+#  Pipeline per file (see process_file):
+#    0. Run asset_path_processor.sh to rewrite relative asset paths so they
+#       resolve from resolved/ (document-relative first, project root second).
+#    1. Run mermaid_processor.sh to replace ```mermaid blocks with image refs
+#       (in place on the resolved copy).
 #    2. Run image_processor.sh to download remote images into the local cache.
 #    3. Run pandoc (custom Typst template) with the typst PDF engine.
 #       Directive expansion (/toc, /breakpage, /newpage, /pagebreak) and pipe
@@ -91,7 +101,9 @@ Usage:
 
 Options:
   -l <list.txt>   stitch and build the files listed in <list.txt> as one PDF
-                  (list entries may be relative to the list file; '#' comments)
+                  (entries resolve against the list file's directory; asset
+                  paths against the document's directory, then the list
+                  file's directory; '#' comments)
   -h, --help      show this help and exit
 
 Environment overrides:
@@ -165,27 +177,48 @@ echo "curl    : $(curl --version | head -n1)"
 echo
 
 IS_STITCHED=0
+PROJECT_ROOT="$WORK_DIR"
 if [ -n "$LIST_FILE" ]; then
+    LIST_FILE="$(abspath "$LIST_FILE")"
     [ -f "$LIST_FILE" ] || fatal "list file not found: $LIST_FILE"
     list_dir="$(dirname "$LIST_FILE")"
-    STITCHED_FILES=()
+
+    # The stitched build's project root is the list file's directory: list
+    # entries AND relative asset paths in the documents (images, SVGs, ...)
+    # resolve against it, so the script may be invoked from any cwd.
+    PROJECT_ROOT="$list_dir"
+
+    # Stitched sources are staged flat into resolved/ (by basename) so that
+    # every relative asset path — author-written or processor-written —
+    # resolves from the same root. Duplicate basenames would be
+    # indistinguishable in the combined document, so they are a hard error.
+    STITCHED_SOURCES=()
+    STITCHED_NAMES=()
     while IFS= read -r line || [ -n "$line" ]; do
         line="$(trim "$line")"
         [ -z "$line" ] && continue
         [[ "$line" == \#* ]] && continue
 
-        if [ -f "$list_dir/$line" ]; then
-            STITCHED_FILES+=("$list_dir/$line")
-        elif [ -f "$line" ]; then
-            STITCHED_FILES+=("$line")
-        else
-            fatal "file listed in $LIST_FILE not found: $line"
-        fi
+        [ -f "$list_dir/$line" ] \
+            || fatal "file listed in $LIST_FILE not found: $line (entries resolve against $list_dir)"
+
+        base="$(basename "$line")"
+        [ "$base" = "_stitched_combined.md" ] \
+            && fatal "reserved name in $LIST_FILE: $base"
+        for prev in "${STITCHED_NAMES[@]:-}"; do
+            [ -n "$prev" ] || continue
+            [ "$prev" = "$base" ] \
+                && fatal "duplicate basename in $LIST_FILE: $base (stitched sources are staged flat; rename one of the files)"
+        done
+
+        STITCHED_SOURCES+=("$list_dir/$line")
+        STITCHED_NAMES+=("$base")
     done < "$LIST_FILE"
 
-    [ "${#STITCHED_FILES[@]}" -gt 0 ] \
+    [ "${#STITCHED_NAMES[@]}" -gt 0 ] \
         || fatal "No markdown files found in list file: $LIST_FILE"
-    FILES=("${STITCHED_FILES[@]}")
+    # FILES is kept in sync for the failure-count reporting at the end.
+    FILES=("${STITCHED_NAMES[@]}")
     IS_STITCHED=1
 else
     shopt -s nullglob
@@ -219,17 +252,37 @@ else
     trap 'rm -rf "$TMP_BUILD"' EXIT
 fi
 
-# --- Mirror any subdirectories (e.g. figures/, assets/) into resolved/ -------
+# --- Mirror the project root's asset tree into resolved/ ---------------------
+# Subdirectories of the project root (e.g. figures/, assets/) are copied
+# wholesale so that relative asset paths resolve from resolved/, which is
+# where pandoc runs. For normal builds the project root is the cwd; for
+# stitched (-l) builds it is the list file's directory.
 # Note: the glob does not match hidden directories, so .cache/ is never copied.
 shopt -s nullglob
-for d in */ ; do
+for d in "$PROJECT_ROOT"/*/ ; do
     d="${d%/}"
-    [ "$d" = "PDF" ] && continue
-    [ "$d" = "resolved" ] && continue
+    base="$(basename "$d")"
+    [ "$base" = "PDF" ] && continue
+    [ "$base" = "resolved" ] && continue
     if [ -d "$d" ]; then
-        mkdir -p "$RESOLVED/$d"
-        cp -r "$d"/. "$RESOLVED/$d/"
+        mkdir -p "$RESOLVED/$base"
+        cp -r "$d"/. "$RESOLVED/$base/"
     fi
+done
+shopt -u nullglob
+
+# --- Loose asset files (e.g. logo.svg next to the documents) ------------------
+# Non-hidden, non-directory, non-markdown files in the project root are
+# copied as well so that relative references to sibling assets resolve.
+# (The list file itself is skipped in stitched builds.)
+shopt -s nullglob
+for f in "$PROJECT_ROOT"/* ; do
+    [ -f "$f" ] || continue
+    [ "$f" = "$LIST_FILE" ] && continue
+    case "$f" in
+        *.md) continue ;;
+    esac
+    cp "$f" "$RESOLVED/"
 done
 shopt -u nullglob
 
@@ -281,17 +334,28 @@ build_pdf() {
 
 # Preprocess one Markdown file into the resolved tree.
 #   $1: source path (relative to cwd or absolute)
-#   $2: extra text appended to failure messages (e.g. ", skipping")
+#   $2: staging path for the resolved copy, relative to $RESOLVED
+#   $3: extra text appended to failure messages (e.g. ", skipping")
 # Returns non-zero if any step fails; the caller decides abort vs. skip.
 process_file() {
-    local file="$1" fail_note="$2"
-    local resolved="$RESOLVED/${file}"
+    local src="$1" staged="$2" fail_note="$3"
+    local resolved="$RESOLVED/${staged}"
     mkdir -p "$(dirname "$resolved")"
 
-    # --- Step 1: preprocess mermaid blocks -----------------------------------
+    # --- Step 0: resolve relative asset paths --------------------------------
+    # Rewrites relative image targets so they resolve from the root of
+    # resolved/ (where pandoc runs): relative to the document's own
+    # directory first, then to the project root. See asset_path_processor.sh.
+    if ! "$COMPILE_DIR/asset_path_processor.sh" "$src" "$resolved" \
+            --project-root "$PROJECT_ROOT"; then
+        echo "  -> asset path resolution FAILED for $staged$fail_note" >&2
+        return 1
+    fi
+
+    # --- Step 1: preprocess mermaid blocks (in place on the resolved copy) ---
     local mermaid_args=(
         "$COMPILE_DIR/mermaid_processor.sh"
-        "$file" "$resolved"
+        "$resolved" "$resolved"
         --diagrams-dir "$RESOLVED/diagrams"
         --mmdc "$MMDC"
     )
@@ -300,14 +364,14 @@ process_file() {
     fi
 
     if ! "${mermaid_args[@]}"; then
-        echo "  -> preprocessing FAILED for $file$fail_note" >&2
+        echo "  -> preprocessing FAILED for $staged$fail_note" >&2
         return 1
     fi
 
     # --- Step 2: download remote images into the local cache -----------------
     if ! "$COMPILE_DIR/image_processor.sh" "$resolved" "$resolved" \
             --cache-dir "$RESOLVED/images"; then
-        echo "  -> image preprocessing FAILED for $file$fail_note" >&2
+        echo "  -> image preprocessing FAILED for $staged$fail_note" >&2
         return 1
     fi
     # Steps 3+ (directive expansion, pipe-table conversion) happen inside
@@ -330,11 +394,14 @@ if [ "$IS_STITCHED" = "1" ]; then
     # the first. Any preprocessing failure aborts immediately rather than
     # silently producing a PDF with a piece missing.
     PANDOC_EXTRA_ARGS=(-M single-toc=true)
-    for file in "${FILES[@]}"; do
-        process_file "$file" "" || exit 1
+    for i in "${!STITCHED_SOURCES[@]}"; do
+        src="${STITCHED_SOURCES[$i]}"
+        staged="${STITCHED_NAMES[$i]}"
+        echo "  + ${src#"$PROJECT_ROOT/"}"
+        process_file "$src" "$staged" "" || exit 1
         echo "" >> "$STITCHED_COMBINED"
         echo "" >> "$STITCHED_COMBINED"
-        cat "$RESOLVED/${file}" >> "$STITCHED_COMBINED"
+        cat "$RESOLVED/${staged}" >> "$STITCHED_COMBINED"
     done
 
     if ! build_pdf "$(basename "$STITCHED_COMBINED")" \
@@ -349,7 +416,7 @@ else
     for file in "${FILES[@]}"; do
         echo "Converting: $file"
 
-        if ! process_file "$file" ", skipping"; then
+        if ! process_file "$file" "$file" ", skipping"; then
             FAILED=$((FAILED + 1))
             continue
         fi

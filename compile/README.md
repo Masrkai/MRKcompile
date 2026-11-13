@@ -5,16 +5,12 @@ typeset PDFs using **pandoc + Typst**, with automatic rendering of **Mermaid
 diagrams** and conversion of **Markdown tables** into native Typst tables.
 
 ```
-source .md ──► mermaid_processor.sh ──► image_processor.sh ──►  pandoc (Lua filters)  ──► typst ──► PDF
-                (```mermaid → image)      (remote img → local)     ↑                        (typst writer)
-                                                                   inside pandoc:
-                                                                   directives_filter.lua (/toc, /breakpage → typst)
-                                                                   table_filter.lua (| tables | → #table)
+source .md ──► asset_path_processor.sh ──► mermaid_processor.sh ──► image_processor.sh ──►  pandoc (Lua filters)  ──► typst ──► PDF
+                (relative asset →            (```mermaid → image)      (remote img → local)     ↑                        (typst writer)
+                 resolved-root path)                                                          inside pandoc:
+                                                                                              directives_filter.lua (/toc, /breakpage → typst)
+                                                                                              table_filter.lua (| tables | → #table)
 ```
-
-Stitched builds (`-l`) pass `-M single-toc=true` to pandoc so that
-`directives_filter.lua` expands only the first `/toc` globally; the filter
-runs on per-file and on combined documents alike.
 
 ## Prerequisites
 
@@ -31,7 +27,8 @@ comes with it via npm.
 ## Usage
 
 Run the build script **from the directory that contains your `.md` files**
-(the script may be invoked by its path from anywhere):
+(the script may be invoked by its path from anywhere — with `-l` this is not
+required at all, see below):
 
 ```bash
 /path/to/Compile/compile.sh                # build every top-level *.md
@@ -40,9 +37,14 @@ Run the build script **from the directory that contains your `.md` files**
 /path/to/Compile/compile.sh -h             # show help (also: --help)
 ```
 
+File arguments in normal mode are relative to the working directory;
+absolute paths are not supported. Relative asset paths inside the documents
+are resolved per the rules in *Relative asset paths* below.
+
 For each selected file it will:
 
-1. Copy the source into `resolved/` so relative image paths resolve.
+1. Copy the source into `resolved/`, rewriting relative asset paths so they
+   resolve from the `resolved/` root (see *Relative asset paths* below).
 2. Run `mermaid_processor.sh`, replacing each ` ```mermaid ` block with an
    image reference to a PDF rendered by `mmdc` (cached by content hash in
    `.cache/diagrams/`).
@@ -55,7 +57,52 @@ For each selected file it will:
    `-M single-toc=true`), then `table_filter.lua` converts pipe tables into
    native Typst `#table(...)` blocks.
 
+### Relative asset paths
+
+pandoc/typst resolve every relative path against the working directory of
+the build — the root of the `resolved/` staging tree — not against the
+document's own location. `asset_path_processor.sh` therefore rewrites
+relative `![...](path)` image targets before pandoc runs:
+
+1. If the target exists relative to the **document's own directory**, it is
+   rewritten to that location (so `docs/pic.svg` referenced from
+   `docs/chapter.md` becomes a path that resolves from the `resolved/`
+   root).
+2. Otherwise, if the target already exists relative to the **project root**
+   (the working directory for normal builds, the list file's directory for
+   stitched builds), it is left unchanged.
+3. Otherwise the reference is left untouched and a warning is printed; the
+   build then fails loudly at the typst stage ("file not found").
+
+When both candidates exist, the document-relative one wins. Only
+`![...](...)` image syntax is handled: `http(s)://` targets belong to
+`image_processor.sh`, and `#anchors`, absolute paths and targets containing
+whitespace or parentheses are left untouched. Code fences are skipped so
+example content is not altered (indented code blocks are not tracked); raw
+HTML `<img>` is out of scope.
+
 The script exits non-zero if any selected file failed to build.
+
+### Stitched builds (`-l`)
+
+For a stitched build the **list file's directory is the project root**:
+
+- List entries resolve against the directory containing the list file (a
+  missing entry is a hard error; there is no fallback to the working
+  directory). The script may therefore be invoked from any cwd.
+- The asset tree (subdirectories and loose asset files such as `logo.svg`)
+  is mirrored from the list file's directory into `resolved/`, and relative
+  asset paths in the documents are resolved by `asset_path_processor.sh`
+  (document-relative first, then project root; see *Relative asset paths*
+  above).
+- Sources are staged flat into `resolved/` by basename, so two entries
+  sharing a basename (e.g. `a/ch1.md` and `b/ch1.md`) abort the build; the
+  combined output is written to `PDF/<list-file-name>.pdf` in the working
+  directory.
+
+Stitched builds pass `-M single-toc=true` to pandoc so that
+`directives_filter.lua` expands only the first `/toc` globally; the filter
+runs on per-file and on combined documents alike.
 
 ### Intermediates and debugging
 
@@ -132,6 +179,7 @@ the converter does not know), not a broken pipeline.
 | File | Role |
 |------|------|
 | `compile.sh` | orchestrator: file selection, pre-flight checks, preprocessing, pandoc call |
+| `asset_path_processor.sh` | relative `![...](path)` targets → paths that resolve from the `resolved/` root |
 | `mermaid_processor.sh` | ` ```mermaid ` fences → rendered PDF images (with captions) |
 | `image_processor.sh` | remote `http(s)` images → local cached copies |
 | `directives_filter.lua` | pandoc Lua filter: `/toc`, `/breakpage`, `/newpage`, `/pagebreak` → raw Typst blocks (`-M single-toc=true` for stitched builds) |

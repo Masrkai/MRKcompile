@@ -223,7 +223,7 @@ function wsmark(s,    i) {
     while (match(line, /!\[[^]]*\]\([^)]*\)/)) {
         inst = substr(line, RSTART, RLENGTH)
         p = index(inst, "](")                       # alt cannot contain ]
-        inner = substr(inst, p + 2, length(inst) - p - 3)
+        inner = substr(inst, p + 2, length(inst) - p - 2)
         gsub(/^[ \t]+|[ \t]+$/, "", inner)
         ok = 1
         ws = wsmark(inner)
@@ -410,7 +410,7 @@ function wsmark(s,    i) {
         inst = substr(line, RSTART, RLENGTH)
         p = index(inst, "](")
         alt = substr(inst, 3, p - 3)
-        inner = substr(inst, p + 2, length(inst) - p - 3)
+        inner = substr(inst, p + 2, length(inst) - p - 2)
         gsub(/^[ \t]+|[ \t]+$/, "", inner)
         ok = 1
         url = ""

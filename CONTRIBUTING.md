@@ -16,6 +16,7 @@ the entire toolchain; `testfiles/` holds sample documents for verification.
 MRKcompile/
 ├── compile/                  ← the toolchain (see compile/README.md)
 │   ├── compile.sh            ← entry point; run this to build
+│   ├── asset_path_processor.sh ← relative asset paths → resolved-root paths
 │   ├── mermaid_processor.sh  ← mermaid fences → rendered PDF figures
 │   ├── image_processor.sh    ← remote http(s) images → local cached copies
 │   ├── directives_filter.lua ← pandoc filter: /toc, /breakpage directives → Typst blocks

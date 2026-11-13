@@ -1,0 +1,4 @@
+# Stitched-build fixture: relative asset paths resolve against this file's
+# directory, so the build may be invoked from any cwd.
+chapters/01-intro.md
+chapters/02-methods.md
